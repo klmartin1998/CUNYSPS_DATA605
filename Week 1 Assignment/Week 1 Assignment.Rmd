@@ -1,0 +1,128 @@
+---
+title: "Week 1 Assignment"
+author: "Kory Martin"
+date: "1/28/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+This article from FiveThirtyEight highlights how people of color made up only 28% of the general election candidates in the 2022 election, while as a group they make up 41% of the general population. Additionally, the article highlights how this disparity among candidate representation continues to be more stark within the Republican party, where only 19% of canidates were people of color, compared to 46% of candidates running within the Democratic Party.
+
+Link to Article: https://fivethirtyeight.com/features/2022-candidates-race-data/
+
+## Set initial libraries
+
+```{r}
+
+library(tidyverse)
+library(janitor)
+```
+
+
+## Read in Data and change to Tibble
+
+```{r}
+dem_candidates_raw = read.csv('https://raw.githubusercontent.com/fivethirtyeight/data/master/primary-project-2022/dem_candidates.csv')
+
+rep_candidates_raw = read.csv('https://raw.githubusercontent.com/fivethirtyeight/data/master/primary-project-2022/rep_candidates.csv')
+
+dem_candidates = as_tibble(dem_candidates_raw)
+rep_candidates = as_tibble(rep_candidates_raw)
+
+```
+
+## Clean up Democratic Candidates data
+
+```{r}
+dem_candidates = dem_candidates %>% mutate(Party = 'Democrat') #Add party affiliation to the dataframe
+
+colnames(dem_candidates)
+
+dem_candidates = dem_candidates %>% select(c('Candidate','Party','Gender','Race.1', 'Race.2', 'Race.3','Incumbent', 'Incumbent.Challenger','Office', 'District','State','Primary.Outcome'))
+```
+
+## Clean up Republican Candidates data
+
+```{r}
+
+rep_candidates = rep_candidates %>% mutate(Party = 'Republican') #Add party affiliation to the dataframe
+
+colnames(rep_candidates)
+
+rep_candidates = rep_candidates %>% select(c('Candidate','Party','Gender','Race.1', 'Race.2', 'Race.3','Incumbent', 'Incumbent.Challenger','Office', 'District','State','Primary.Outcome'))
+
+```
+
+## Merge Dataframes
+
+```{r}
+all_candidates = rbind(dem_candidates, rep_candidates)
+
+```
+
+## Explore and clean the data
+
+```{r}
+#Ensuring that there are no invalid repsonses in any of the fields
+
+unique(all_candidates$Gender)
+unique(all_candidates$Race.1)
+unique(all_candidates$Race.2)
+unique(all_candidates$Race.3)
+unique(all_candidates$Incumbent)
+unique(all_candidates$Incumbent.Challenger)
+unique(all_candidates$State)
+unique(all_candidates$Office)
+unique(all_candidates$District)
+unique(all_candidates$Primary.Outcome)
+
+
+
+```
+
+## Clean Up Merged Dataframe
+
+Clean up the candidates dataframe and expand the features, by completing the following steps:
+
+1. Split Race.1 values to only include the primary race and not the ethnicity information
+2. Remove any trailing white space from the new Race field
+3. Remove the trailing paren from the Ethnicity field
+4. Create a new field - Race.Simplified - that categories Race as White or Non-White
+
+```{r}
+#Split Race.1 column to only include Race and split the Ethnicity into a seperate column
+
+all_candidates = all_candidates %>% separate(Race.1, into=c("Race","Ethnicity"), sep="\\(")
+all_candidates = all_candidates %>% mutate(Race = str_trim(Race))
+unique(all_candidates$Race)
+
+#Remove the trailing paren from the Ethnicity string
+all_candidates = all_candidates %>% mutate(Ethnicity = str_remove(Ethnicity,"\\)"))
+
+unique(all_candidates$Ethnicity)
+
+#Create Simplified Race category
+all_candidates = all_candidates %>% mutate(Race.Simplified = ifelse(Race == 'White','White','Non-White'))
+
+all_candidates = all_candidates %>% clean_names()
+
+colnames(all_candidates)
+```
+
+
+
+## Conclusion
+
+Based on this initial cleaning of the data discovery, there's a lot of additional ways to cut the data to better understand the demographic breakdown of the candidates and to identify other potential correlations - both in tabular form as well as through data visualizations. Some examples of this additional exploratory analysis includes:
+
+1. Looking at breakdown of candidates by race based on the Office they are running for
+2. Looking at breakdown of candidates by race based on the State they were running for office in
+3. Determine the breakdown of candidates by race and gender
+4. Determine the breakdown of candidates by race based on the outcome of their election
+
+An understanding of this data can be very useful to influence outreach efforts for drumming up political engagement by more people from underrpresented communities, in order to expand the bench of potential candidates in the future. 
