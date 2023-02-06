@@ -2,7 +2,8 @@
 title: 'Week #2 Assignment'
 author: "Kory Martin"
 date: "2/3/2023"
-output: pdf_document
+output: html_document
+
 ---
 
 ## Introduction
@@ -24,12 +25,12 @@ For this assignment, I achieved the following tasks:
 ## Setup environment
 
 ```{r setup, include=FALSE}
-#knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
 
-#install.packages("dotenv")
-#install.packages('rvest')
-#install.packages('RMySQL')
-#install.packages('dbConnect')
+install.packages("dotenv")
+install.packages('rvest')
+install.packages('RMySQL')
+install.packages('dbConnect')
 
 library(odbc)
 
@@ -202,7 +203,7 @@ dbSendQuery(my_db,query)
 ```
 
 
-## Insert into Responses Table
+## Insert into Ratings Table
 
 Use data from the ratings_df dataframent to populate the movie_ratings table in the DB
 
@@ -244,7 +245,6 @@ Now that the data is in the DB, we can run queries to extract the table and put 
 3. Minimum rating
 4. Maximum rating
 
-From there, we can do a variety of exploratory analysis steps to better understand the ratings that were received. 
 
 ```{r }
 
@@ -269,3 +269,9 @@ ratings_summary = ratings_df %>% group_by(title) %>% summarize(num_reviews = n_d
 df = ratings_summary %>% arrange(desc(num_reviews))
 
 ```
+
+## Conclusion
+
+This was a very challenging and fun assignment. I continued to have issues with the code saying it was Updating Loaded Packages and the code stalling. This was something that I was unable to resolve.
+
+However, if I had more time, there are a number of exploratory data analysis steps that I could take to better examine the results and do some associated visualizations. I plan on coming back and doing more with this assignment.
