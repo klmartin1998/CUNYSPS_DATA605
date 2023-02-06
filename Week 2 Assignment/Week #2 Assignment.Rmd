@@ -1,0 +1,271 @@
+---
+title: 'Week #2 Assignment'
+author: "Kory Martin"
+date: "2/3/2023"
+output: pdf_document
+---
+
+## Introduction
+
+For this assignment, I achieved the following tasks: 
+
+1. Connected to a MySQL database hosted in AWS
+2. Setup and stored necessary credentials in an environment file
+3. Scraped the web to get a list of movies that were released in 2022
+4. Scraped the web to get a list of names to use as respondents
+5. Created synthetic ratings data based on the 2022 movies and the names used as respondents
+6. Created tables in MySQL DB to house the movie titles, respondents, and movie ratings
+7. Used SQL code to populate the DB tables with the synthetic information
+8. Used SQL code to retrieve the data from each of the tables to generate the respective dataframes
+9. Combined the data into a ratings dataframe
+10. Created a ratings summary dataframe to show the ratings for each of the movies based on the responses
+
+
+## Setup environment
+
+```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE)
+
+#install.packages("dotenv")
+#install.packages('rvest')
+#install.packages('RMySQL')
+#install.packages('dbConnect')
+
+library(odbc)
+
+
+library(dotenv)
+load_dot_env("db_creds.env")
+
+library(tidyverse)
+library(rvest)
+library(lubridate)
+library(dplyr)
+library(RMySQL)
+
+```
+
+## Establish connection to AWS MySQL DB 
+
+
+```{r}
+
+
+
+
+my_db=DBI::dbConnect(RMySQL::MySQL(),host=Sys.getenv("DB_HOST"),
+                     port=as.integer(Sys.getenv("DB_PORT")),
+                     user=Sys.getenv("DB_USERNAME"),
+                     password=Sys.getenv("DB_PASSWORD"),
+                     dbname=Sys.getenv("DB_NAME"))
+
+
+```
+
+## The following code segments are used to generate the synthetic movie ratings data
+
+
+## Get movie list
+This code segment scrapes the https://movieweb.com/movies/2022/ website to retrieve the names of movies released in 2022. It then pulls out the title of the movie and the released date, and stores it in a dataframe
+
+```{r get-movie-list}
+
+
+html = read_html("https://movieweb.com/movies/2022/")
+
+col_names = c("title", "release_date")
+movie_df = data.frame(matrix(nrow=0, ncol=2))
+colnames(movie_df) = col_names
+
+db_cards = html %>% html_nodes(".listing-database-card")
+
+count = 1
+for(item in db_cards) {
+  movie_date = item %>% html_node(".database-card-spec") %>% html_text()
+  movie_title = item %>% html_node(".database-card-title") %>% html_text()
+  movie_title = str_squish(movie_title)
+  #print(movie_title)
+  movie_df[count,] = c(movie_title, movie_date)
+  count = count+1
+}
+
+movie_df = as.tibble(movie_df)
+movie_df = movie_df %>% filter(release_date!='2022')
+movie_df = movie_df %>% mutate(release_date = as.Date(release_date,format="%B %d, %Y"))
+movie_df %>% mutate(year = year(release_date), month=month(release_date))
+movie_df = movie_df %>% filter(title != "")
+movie_df = movie_df %>% filter(str_detect(title,"\'",negate=TRUE))
+```
+
+## Create Names Dataframe
+
+This code segment scrapes the https://www.cbssports.com/mlb/news/top-100-mlb-players-for-2022-season-juan-soto-vladimir-guerrero-jr-mike-trout-battle-for-no-1-ranking/ website, and uses the site to generate a list of names that will be used to represent the respondents for the movie ratings. It places the information in a vector of names
+
+```{r}
+names = c()
+
+
+html = read_html("https://www.cbssports.com/mlb/news/top-100-mlb-players-for-2022-season-juan-soto-vladimir-guerrero-jr-mike-trout-battle-for-no-1-ranking/")
+player_cells = html %>% html_nodes(".PlayerObjectCell")
+
+count = 1
+
+for(player in player_cells) {
+  name = player %>% html_node(".player-name") %>% html_text()
+  name = str_squish(name)
+  #print(name)
+  names[count] = name
+  count = count + 1
+}
+
+names = as.tibble(names) %>% filter(str_detect(value,"\'",negate = TRUE))
+
+```
+
+## Randomly Select movies
+
+This code block is used to create synthetic data that will represent the movies seen by each respondent (if any) and the rating that they give to each movie. The code uses the following logic:
+
+- For each player in the list randomly select a number of movies seen from 1 through 10
+- Based on this, select random titles from the movies list that they have seen
+- For each movie, generate a random rating from 1 through 5
+
+The data is stored in a dataframe with the movie ratings.
+
+```{r}
+
+col_names = c("respondent", "title", "rating")
+
+ratings_df = data.frame(matrix(nrow=0, ncol=length(col_names)))
+
+colnames(ratings_df) = col_names
+
+count = 1
+set.seed(10)
+
+for(respondent in names$value) {
+  
+  
+  num_movies = ceiling(runif(1,min=1, max=10))
+  movie_titles = ceiling(runif(num_movies,min=1,max=nrow(movie_df)))
+  ratings = ceiling(runif(num_movies,min=1, max=5))
+  
+  for(i in 1:num_movies) {
+    title_num = movie_titles[i]
+    rating = ratings[i]
+    movie_title = movie_df[[title_num,1]]
+    rating_vector = c(respondent,movie_title,rating)
+    ratings_df[count,] = rating_vector
+    count=count+1
+  }
+  
+}
+  
+
+ratings_df = as.tibble(ratings_df)
+
+ratings_df = ratings_df %>% mutate(rating = as.integer(rating))
+```
+## Insert Data into movies DataFrame
+
+Use the movies dataframe to populate the movies table in the DB
+
+```{r}
+
+
+# creating the query
+query <- "INSERT INTO movies(title, release_date) VALUES"
+  
+# inserting values in sql query
+query <- paste0(query, paste(sprintf("('%s', '%s')",
+   movie_df$title, movie_df$release_date), collapse = ","))
+
+dbSendQuery(my_db,query)
+
+
+```
+
+## Insert Data into Respondents Table
+
+Use the names dataframe to populate the respondents table in the DB
+
+```{r}
+
+
+query = "INSERT INTO respondents(name) VALUES"
+
+query = paste0(query, paste(sprintf("('%s')",names$value),collapse=","))
+
+
+dbSendQuery(my_db,query)
+
+```
+
+
+## Insert into Responses Table
+
+Use data from the ratings_df dataframent to populate the movie_ratings table in the DB
+
+```{r}
+
+for (i in 1:nrow(ratings_df)) {
+  respondent = ratings_df[[i,1]]
+  title = ratings_df[[i,2]]
+  rating = ratings_df[[i,3]]
+  #print(respondent)
+  
+  query = "SELECT movie_id FROM movies WHERE title = "
+  query = paste0(query,paste(sprintf("'%s'",title)))
+  movie_id = dbGetQuery(my_db,query)
+  
+  query = "SELECT respondent_id FROM respondents WHERE name = "
+  query = paste0(query,paste(sprintf("'%s'",respondent)))
+  respondent_id = dbGetQuery(my_db,query)
+  
+  movie_id = movie_id$movie_id
+  respondent_id = respondent_id$respondent_id
+  
+  query = "INSERT INTO movie_ratings(respondent_id, movie_id, rating) VALUES"
+  query = paste0(query, paste(sprintf("(%i, %i, %i)",respondent_id, movie_id, rating),collapse=","))
+  
+  dbGetQuery(my_db,query)
+  
+}
+
+
+```
+
+## Retrieve data from MySQL DB
+
+Now that the data is in the DB, we can run queries to extract the table and put it into a data frame. Once each of the tables are in a dataframe, we complete the necessary joins in R (as opposed to using SQL) to create a dataframe that combines the ratings, with the movie titles and respondent names. From there we also generated a ratings summary dataframe that lists the following measurments for each movie title:
+
+1. Number of reviews
+2. Average rating
+3. Minimum rating
+4. Maximum rating
+
+From there, we can do a variety of exploratory analysis steps to better understand the ratings that were received. 
+
+```{r }
+
+query = "SELECT * FROM movies"
+movies = dbGetQuery(my_db,query)
+
+query = "SELECT * FROM respondents"
+respondents = dbGetQuery(my_db,query)
+
+query = "SELECT * FROM movie_ratings"
+ratings = dbGetQuery(my_db,query)
+
+ratings_df = left_join(ratings, movies)
+
+ratings_df = left_join(ratings_df,respondents)
+
+ratings_summary = ratings_df %>% group_by(title) %>% summarize(num_reviews = n_distinct(rating_id),
+                                             avg_rating = mean(rating),
+                                             min_rating = min(rating),
+                                             max_rating = max(rating))
+
+df = ratings_summary %>% arrange(desc(num_reviews))
+
+```
